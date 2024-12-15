@@ -1,52 +1,50 @@
+use dashmap::DashMap;
 use std::{
-    collections::HashMap,
     fs::File,
-    io::{BufRead, BufReader, Write},
+    io::{BufReader, Read, Write},
     path::Path,
 };
 
-fn main() {
+const BUFFER_SIZE: usize = 1024;
+
+#[tokio::main]
+async fn main() {
     let args = std::env::args().collect::<Vec<_>>();
-    let result = process_file(&Path::new(&args.get(1).expect("Require a filename")));
+    let result = process_file(&Path::new(&args.get(1).expect("Require a filename"))).await;
     output(std::io::stdout(), &result);
 }
 
-fn process_file(path: &Path) -> Vec<(String, f64, f64, f64)> {
+async fn process_file(path: &Path) -> Vec<(String, f64, f64, f64)> {
     let file = File::open(path).expect("Cannot open file");
     let mut reader = BufReader::new(file);
-    let mut cities = HashMap::<String, _>::new();
-    let mut line_buffer = Vec::with_capacity(80);
-    while let Ok(count) = reader.read_until('\n' as u8, &mut line_buffer) {
+    let cities = DashMap::<String, _>::new();
+    let mut buffer1 = [0u8; BUFFER_SIZE];
+    let mut buffer2 = [0u8; BUFFER_SIZE];
+    let mut reading: &mut [u8] = &mut buffer1;
+    let mut maybe_processing: Option<&mut [u8]> = None;
+    let mut reserve: Option<&mut [u8]> = Some(&mut buffer2);
+    let mut processing_count = 0;
+    let mut is_first = true;
+    while let Ok(count) = reader.read(reading) {
         if count == 0 {
             break;
         }
-        let len = if line_buffer[count - 1] == '\n' as u8 {
-            count - 1
-        } else {
-            count
-        };
-        let Some((separator_index, _)) = line_buffer
-            .iter()
-            .enumerate()
-            .find(|(_, c)| **c == ';' as u8)
-        else {
-            panic!("Invalid line");
-        };
-        let city = unsafe { std::str::from_utf8_unchecked(&line_buffer[..separator_index]) };
-        let measurement_str =
-            unsafe { std::str::from_utf8_unchecked(&line_buffer[separator_index + 1..len]) };
-        let Ok(measurement) = measurement_str.parse::<f64>() else {
-            panic!("Could not parse {:?}", measurement_str.as_bytes());
-        };
-        if let Some((min, max, sum, count)) = cities.get_mut(city) {
-            *min = f64::min(*min, measurement);
-            *max = f64::max(*max, measurement);
-            *sum += measurement;
-            *count += 1;
-        } else {
-            cities.insert(city.to_string(), (measurement, measurement, measurement, 1));
+        if let Some(processing) = maybe_processing {
+            process_buffer(
+                &cities,
+                &processing[0..processing_count],
+                Some(&reading[0..count]),
+                is_first,
+            );
+            (reading, maybe_processing) = (processing, Some(reading));
+            is_first = false;
+        } else if let Some(reserve) = reserve.take() {
+            (reading, maybe_processing) = (reserve, Some(reading));
         }
-        line_buffer.clear();
+        processing_count = count;
+    }
+    if let Some(m_processing) = maybe_processing {
+        process_buffer(&cities, &m_processing[0..processing_count], None, is_first);
     }
     let mut results = cities
         .into_iter()
@@ -54,6 +52,80 @@ fn process_file(path: &Path) -> Vec<(String, f64, f64, f64)> {
         .collect::<Vec<_>>();
     results.sort_by(|(v1, _, _, _), (v2, _, _, _)| v1.cmp(v2));
     results
+}
+
+fn process_buffer(
+    data: &DashMap<String, (f64, f64, f64, u32)>,
+    buffer: &[u8],
+    following_buffer: Option<&[u8]>,
+    is_first: bool,
+) {
+    let mut index = if is_first {
+        0
+    } else {
+        if let Some((newline_index, _)) = buffer.iter().enumerate().find(|(_, c)| **c == '\n' as u8)
+        {
+            newline_index + 1
+        } else {
+            return;
+        }
+    };
+    while let Some((newline_index, _)) = buffer
+        .iter()
+        .enumerate()
+        .skip(index)
+        .find(|(_, c)| **c == '\n' as u8)
+    {
+        process_line(data, &buffer[index..newline_index]);
+        index = newline_index + 1;
+    }
+    if let Some(following_buffer) = following_buffer {
+        let following_index = if let Some((newline_index, _)) = following_buffer
+            .iter()
+            .enumerate()
+            .find(|(_, c)| **c == '\n' as u8)
+        {
+            newline_index
+        } else {
+            following_buffer.len()
+        };
+        let mut line_buffer = Vec::from(&buffer[index..]);
+        line_buffer.extend(&following_buffer[..following_index]);
+        process_line(data, &line_buffer);
+    } else {
+        process_line(data, &buffer[index..]);
+    }
+}
+
+fn process_line(data: &DashMap<String, (f64, f64, f64, u32)>, line_buffer: &[u8]) {
+    if line_buffer.len() == 0 {
+        return;
+    }
+    let Some((separator_index, _)) = line_buffer
+        .iter()
+        .enumerate()
+        .find(|(_, c)| **c == ';' as u8)
+    else {
+        panic!(
+            "Invalid line: {line}",
+            line = std::str::from_utf8(line_buffer).unwrap_or(&format!("{line_buffer:?}"))
+        );
+    };
+    let len = line_buffer.len();
+    let city = unsafe { std::str::from_utf8_unchecked(&line_buffer[..separator_index]) };
+    let measurement_str =
+        unsafe { std::str::from_utf8_unchecked(&line_buffer[separator_index + 1..len]) };
+    let Ok(measurement) = measurement_str.parse::<f64>() else {
+        panic!("Could not parse {:?}", measurement_str.as_bytes());
+    };
+    if let Some(mut entry) = data.get_mut(city) {
+        entry.0 = f64::min(entry.0, measurement);
+        entry.1 = f64::max(entry.1, measurement);
+        entry.2 += measurement;
+        entry.3 += 1;
+    } else {
+        data.insert(city.to_string(), (measurement, measurement, measurement, 1));
+    }
 }
 
 fn output(mut writer: impl Write, lines: &[(String, f64, f64, f64)]) {
@@ -77,11 +149,11 @@ mod tests {
         path::Path,
     };
 
-    #[test]
-    fn outputs_mean_max_min_of_singleton() -> Result<()> {
+    #[tokio::test]
+    async fn outputs_mean_max_min_of_singleton() -> Result<()> {
         let tempfile = write_content("Arbitrary city;12.3");
 
-        let result = process_file(tempfile.path());
+        let result = process_file(tempfile.path()).await;
 
         verify_that!(
             result,
@@ -94,11 +166,11 @@ mod tests {
         )
     }
 
-    #[test]
-    fn outputs_correct_data_with_negative_singleton() -> Result<()> {
+    #[tokio::test]
+    async fn outputs_correct_data_with_negative_singleton() -> Result<()> {
         let tempfile = write_content("Arbitrary city;-12.3");
 
-        let result = process_file(tempfile.path());
+        let result = process_file(tempfile.path()).await;
 
         verify_that!(
             result,
@@ -111,11 +183,11 @@ mod tests {
         )
     }
 
-    #[test]
-    fn outputs_mean_max_min_of_singleton_with_two_measurements() -> Result<()> {
+    #[tokio::test]
+    async fn outputs_mean_max_min_of_singleton_with_two_measurements() -> Result<()> {
         let tempfile = write_content("Arbitrary city;10.0\nArbitrary city;20.0");
 
-        let result = process_file(tempfile.path());
+        let result = process_file(tempfile.path()).await;
 
         verify_that!(
             result,
@@ -128,11 +200,11 @@ mod tests {
         )
     }
 
-    #[test]
-    fn outputs_mean_max_min_of_two_entries() -> Result<()> {
+    #[tokio::test]
+    async fn outputs_mean_max_min_of_two_entries() -> Result<()> {
         let tempfile = write_content("Arbitrary city;12.3\nDifferent city;45.6");
 
-        let result = process_file(tempfile.path());
+        let result = process_file(tempfile.path()).await;
 
         verify_that!(
             result,
@@ -153,11 +225,11 @@ mod tests {
         )
     }
 
-    #[test]
-    fn outputs_are_sorted_alphabetically() -> Result<()> {
+    #[tokio::test]
+    async fn outputs_are_sorted_alphabetically() -> Result<()> {
         let tempfile = write_content("C;1\nB;2\nA;3\nD;5");
 
-        let result = process_file(tempfile.path());
+        let result = process_file(tempfile.path()).await;
 
         verify_that!(
             result,
@@ -170,14 +242,26 @@ mod tests {
         )
     }
 
-    #[test]
-    fn output_matches_sample() -> Result<()> {
+    #[tokio::test]
+    async fn output_matches_sample() -> Result<()> {
         let mut writer = BufWriter::new(Vec::new());
 
-        let result = process_file(Path::new("../../samples/weather_100.csv"));
+        let result = process_file(Path::new("../../samples/weather_100.csv")).await;
         output(&mut writer, &result);
 
         let expected = read_to_string("../../samples/expected/weather_100.txt").unwrap();
+        let actual = String::from_utf8(writer.into_inner().unwrap()).unwrap();
+        verify_that!(actual, eq(expected))
+    }
+
+    #[tokio::test]
+    async fn output_matches_larger_sample() -> Result<()> {
+        let mut writer = BufWriter::new(Vec::new());
+
+        let result = process_file(Path::new("../../samples/weather_1M.csv")).await;
+        output(&mut writer, &result);
+
+        let expected = read_to_string("../../samples/expected/weather_1M.txt").unwrap();
         let actual = String::from_utf8(writer.into_inner().unwrap()).unwrap();
         verify_that!(actual, eq(expected))
     }
