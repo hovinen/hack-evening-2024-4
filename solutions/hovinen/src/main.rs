@@ -1,8 +1,10 @@
+use rayon::iter::ParallelIterator;
 use smallvec::SmallVec;
 use std::collections::hash_map::Entry;
 use std::sync::Arc;
 use std::{io::Write, path::Path};
 use ahash::{AHashMap, AHashSet};
+use rayon::prelude::IntoParallelIterator;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::task::JoinSet;
 use tokio_uring::fs::File;
@@ -106,9 +108,9 @@ async fn process_file(
         }
     }
     let results = buffers
-        .into_iter()
+        .into_par_iter()
         .map(|buffer| buffer.cities)
-        .reduce(|mut acc_cities, new_cities| {
+        .reduce(|| Default::default(), |mut acc_cities, new_cities| {
             for (city, (min, max, sum, count)) in new_cities {
                 match acc_cities.entry(city) {
                     Entry::Occupied(entry) => {
@@ -124,8 +126,7 @@ async fn process_file(
                 };
             }
             acc_cities
-        })
-        .unwrap_or_default();
+        });
     let mut results = results
         .into_iter()
         .map(|(city, (min, max, sum, count))| (city, min, sum / count as f64, max))
