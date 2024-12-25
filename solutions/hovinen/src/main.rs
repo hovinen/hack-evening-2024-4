@@ -316,6 +316,7 @@ fn process_line(data: &mut HashMap<String, (f64, f64, f64, u32)>, line_buffer: &
     let Some((separator_index, _)) = line_buffer
         .iter()
         .enumerate()
+        .rev()
         .find(|(_, c)| **c == ';' as u8)
     else {
         log::error!(
