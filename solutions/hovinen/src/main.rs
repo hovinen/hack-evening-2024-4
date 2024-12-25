@@ -1,8 +1,8 @@
 use smallvec::SmallVec;
 use std::collections::hash_map::Entry;
-use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::{io::Write, path::Path};
+use ahash::{AHashMap, AHashSet};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::task::JoinSet;
 use tokio_uring::fs::File;
@@ -39,7 +39,7 @@ async fn process_file(
             .await
         });
     });
-    let mut blocks_read = HashMap::new();
+    let mut blocks_read = AHashMap::new();
     let mut jobs = JoinSet::new();
     let return_sender = Arc::new(return_sender);
     while let Some(read_buffer) = ready_receiver.recv().await {
@@ -92,13 +92,13 @@ async fn process_file(
     log::info!("Awaiting completed buffers");
     let mut buffers = completion_receiver.await.unwrap();
     log::info!("Received completed buffers");
-    let buffers_processed = buffers.iter_mut().map(|buffer| buffer.id).collect::<HashSet<_>>();
+    let buffers_processed = buffers.iter_mut().map(|buffer| buffer.id).collect::<AHashSet<_>>();
     for id in 0..JOB_COUNT {
         if !buffers_processed.contains(&id) {
             log::error!("Buffer {id} not processed!");
         }
     }
-    let blocks_processed = buffers.iter_mut().flat_map(|buffer| buffer.blocks_processed.drain()).collect::<HashSet<_>>();
+    let blocks_processed = buffers.iter_mut().flat_map(|buffer| buffer.blocks_processed.drain()).collect::<AHashSet<_>>();
     let block_count = blocks_processed.iter().copied().max().unwrap_or(0);
     for index in 0..=block_count {
         if !blocks_processed.contains(&index) {
@@ -261,8 +261,8 @@ struct Buffer {
     data: Vec<u8>,
     index: usize,
     count: usize,
-    cities: HashMap<String, (f64, f64, f64, u32)>,
-    blocks_processed: HashSet<usize>,
+    cities: AHashMap<String, (f64, f64, f64, u32)>,
+    blocks_processed: AHashSet<usize>,
 }
 
 impl Buffer {
@@ -279,7 +279,7 @@ impl Buffer {
 }
 
 fn process_buffer(
-    data: &mut HashMap<String, (f64, f64, f64, u32)>,
+    data: &mut AHashMap<String, (f64, f64, f64, u32)>,
     buffer: &[u8],
     following_buffer: &[u8],
     is_first: bool,
@@ -312,7 +312,7 @@ fn process_buffer(
     }
 }
 
-fn process_line(data: &mut HashMap<String, (f64, f64, f64, u32)>, line_buffer: &[u8]) {
+fn process_line(data: &mut AHashMap<String, (f64, f64, f64, u32)>, line_buffer: &[u8]) {
     if line_buffer.len() == 0 {
         return;
     }

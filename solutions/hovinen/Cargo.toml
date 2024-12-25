@@ -6,6 +6,7 @@ edition = "2021"
 # Hi there!
 
 [dependencies]
+ahash = "0.8.11"
 dashmap = "6.1.0"
 env_logger = "0.11.6"
 io-uring = "0.7.2"
