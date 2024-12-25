@@ -10,8 +10,8 @@ use tokio_uring::fs::File;
 #[cfg(not(test))]
 const BUFFER_SIZE: usize = 1048576;
 #[cfg(test)]
-const BUFFER_SIZE: usize = 1024;
-const JOB_COUNT: usize = 32;
+const BUFFER_SIZE: usize = 512;
+const JOB_COUNT: usize = 64;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
