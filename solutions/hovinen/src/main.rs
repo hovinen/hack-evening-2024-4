@@ -7,7 +7,10 @@ use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::task::JoinSet;
 use tokio_uring::fs::File;
 
+#[cfg(not(test))]
 const BUFFER_SIZE: usize = 1048576;
+#[cfg(test)]
+const BUFFER_SIZE: usize = 1024;
 const JOB_COUNT: usize = 32;
 
 #[tokio::main]
@@ -317,6 +320,7 @@ fn process_line(data: &mut HashMap<String, (f64, f64, f64, u32)>, line_buffer: &
         .iter()
         .enumerate()
         .rev()
+        .skip(3)
         .find(|(_, c)| **c == ';' as u8)
     else {
         log::error!(
@@ -443,7 +447,7 @@ mod tests {
 
     #[tokio::test]
     async fn outputs_are_sorted_alphabetically() -> Result<()> {
-        let tempfile = write_content("C;1\nB;2\nA;3\nD;5");
+        let tempfile = write_content("C;1.0\nB;2.0\nA;3.0\nD;5.0");
 
         let result = process_file(name_of(&tempfile)).await.unwrap();
 
