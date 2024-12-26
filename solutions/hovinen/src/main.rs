@@ -3,6 +3,7 @@ use smallvec::SmallVec;
 use std::collections::hash_map::Entry;
 use std::sync::Arc;
 use std::{io::Write, path::Path};
+use std::os::unix::fs::MetadataExt;
 use ahash::{AHashMap, AHashSet};
 use rayon::prelude::IntoParallelIterator;
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -142,12 +143,15 @@ async fn read_file(
     completion_queue: tokio::sync::oneshot::Sender<Vec<Buffer>>,
 ) {
     let file = File::open(path).await.expect("Failed to open file");
+    let file_size = path.metadata().expect("Could not read file metadata").size();
     let mut available_buffers = Vec::with_capacity(JOB_COUNT);
     for id in 0..JOB_COUNT {
         available_buffers.push(Buffer::new(id));
     }
-    let mut index = 0;
-    while let Some(mut buffer) = available_buffers.pop() {
+    let total_blocks = (file_size as usize + BUFFER_SIZE - 1) / BUFFER_SIZE;
+    log::info!("Reading {total_blocks} for a file of size {file_size}");
+    for index in 0..total_blocks {
+        let mut buffer = get_next_buffer(&mut available_buffers, &mut return_queue).await;
         let data = std::mem::take(&mut buffer.data);
         let (result, data) = file
             .read_at(data, (index * BUFFER_SIZE) as u64)
@@ -155,10 +159,8 @@ async fn read_file(
         match result {
             Ok(count) => {
                 if count == 0 {
-                    log::info!("End of file reached");
-                    drop(send_queue);
-                    send_completed_buffers(&mut return_queue, completion_queue, buffer).await;
-                    return;
+                    log::error!("Unexpected premature end of file");
+                    break;
                 } else {
                     buffer.data = data;
                     buffer.count = count;
@@ -171,69 +173,23 @@ async fn read_file(
             }
             Err(error) => {
                 log::error!("Error reading file: {error}");
-                drop(send_queue);
-                return;
+                break;
             }
         }
-        index += 1;
     }
-    while let Some(Buffer {
-        id,
-        data,
-        index: _,
-        count: _,
-        cities,
-        blocks_processed,
-    }) = return_queue.recv().await
-    {
-        let (result, data) = file.read_at(data, (index * BUFFER_SIZE) as u64).await;
-        match result {
-            Ok(count) => {
-                let new_buffer = Buffer {
-                    id,
-                    data,
-                    index,
-                    count,
-                    cities,
-                    blocks_processed,
-                };
-                if count == 0 {
-                    drop(send_queue);
-                    send_completed_buffers(&mut return_queue, completion_queue, new_buffer).await;
-                    return;
-                } else {
-                    send_queue
-                        .send(new_buffer)
-                        .await
-                        .expect("Failed to send buffer");
-                }
-            }
-            Err(error) => {
-                drop(send_queue);
-                log::error!("Error reading file: {error}");
-                return;
-            }
-        }
-        index += 1;
-    }
+    log::info!("End of file reached");
+    drop(send_queue);
+    send_completed_buffers(&mut return_queue, completion_queue).await;
 }
 
-async fn send_completed_buffers(
-    return_queue: &mut Receiver<Buffer>,
-    completion_queue: tokio::sync::oneshot::Sender<Vec<Buffer>>,
-    current_buffer: Buffer,
-) {
-    log::info!("Assembling completed buffers");
-    let mut completed_buffers = Vec::with_capacity(JOB_COUNT);
-    completed_buffers.push(current_buffer);
-    while let Some(buffer) = return_queue.recv().await {
-        log::info!("Received buffer {index}", index = buffer.index);
-        completed_buffers.push(buffer);
+async fn get_next_buffer(available_buffers: &mut Vec<Buffer>, return_queue: &mut Receiver<Buffer>) -> Buffer {
+    if let Some(buffer) = available_buffers.pop() {
+        buffer
+    } else if let Some(buffer) = return_queue.recv().await {
+        buffer
+    } else {
+        panic!("No buffers available to store file data!");
     }
-    log::info!("Sending completed buffers");
-    completion_queue
-        .send(completed_buffers)
-        .expect("Unable to send completed buffers");
 }
 
 async fn processing_job(
@@ -254,6 +210,22 @@ async fn processing_job(
     );
     read_buffer.blocks_processed.insert(read_buffer.index);
     let _ = return_sender.send(read_buffer).await;
+}
+
+async fn send_completed_buffers(
+    return_queue: &mut Receiver<Buffer>,
+    completion_queue: tokio::sync::oneshot::Sender<Vec<Buffer>>,
+) {
+    log::info!("Assembling completed buffers");
+    let mut completed_buffers = Vec::with_capacity(JOB_COUNT);
+    while let Some(buffer) = return_queue.recv().await {
+        log::info!("Received buffer {index}", index = buffer.index);
+        completed_buffers.push(buffer);
+    }
+    log::info!("Sending completed buffers");
+    completion_queue
+        .send(completed_buffers)
+        .expect("Unable to send completed buffers");
 }
 
 #[derive(Debug)]
