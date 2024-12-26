@@ -1,11 +1,11 @@
+use ahash::{AHashMap, AHashSet};
 use rayon::iter::ParallelIterator;
+use rayon::prelude::IntoParallelIterator;
 use smallvec::SmallVec;
 use std::collections::hash_map::Entry;
+use std::os::unix::fs::MetadataExt;
 use std::sync::Arc;
 use std::{io::Write, path::Path};
-use std::os::unix::fs::MetadataExt;
-use ahash::{AHashMap, AHashSet};
-use rayon::prelude::IntoParallelIterator;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::task::JoinSet;
 use tokio_uring::fs::File;
@@ -43,34 +43,45 @@ async fn process_file(
         });
     });
     let mut blocks_read = AHashMap::new();
+    let mut initial_data = AHashMap::new();
     let mut jobs = JoinSet::new();
     let return_sender = Arc::new(return_sender);
     while let Some(read_buffer) = ready_receiver.recv().await {
-        log::info!("Block {index} read", index = read_buffer.index);
-        blocks_read.insert(read_buffer.index, read_buffer);
+        log::info!(
+            "Block {block_index} ready for processing",
+            block_index = read_buffer.block_index
+        );
+        initial_data.insert(
+            read_buffer.block_index,
+            if let Some((index, _)) = read_buffer
+                .data
+                .iter()
+                .enumerate()
+                .find(|(_, c)| **c == '\n' as u8)
+            {
+                SmallVec::<[u8; 64]>::from(&read_buffer.data[..index])
+            } else {
+                SmallVec::<[u8; 64]>::from(read_buffer.data.as_slice())
+            },
+        );
+
+        blocks_read.insert(read_buffer.block_index, read_buffer);
+
         let mut blocks_to_process = vec![];
         for block_index in blocks_read.keys() {
-            if blocks_read.contains_key(&(*block_index + 1)) {
+            if initial_data.contains_key(&(*block_index + 1)) {
                 blocks_to_process.push(*block_index);
             }
         }
         blocks_to_process.sort();
         for block_index in blocks_to_process {
             let block = blocks_read.remove(&block_index).unwrap();
-            let next_block = blocks_read.get(&(block_index + 1)).unwrap();
-            let following_block = if let Some((index, _)) = next_block
-                .data
-                .iter()
-                .enumerate()
-                .find(|(_, c)| **c == '\n' as u8)
-            {
-                SmallVec::<[u8; 64]>::from(&next_block.data[..index])
-            } else {
-                SmallVec::<[u8; 64]>::from(next_block.data.as_slice())
-            };
+            let following_block = initial_data
+                .remove(&(block_index + 1))
+                .expect("Following initial data not found");
             log::info!(
-                "Starting processing for buffer at index {index}",
-                index = block.index
+                "Starting processing for block {block_index}",
+                block_index = block.block_index
             );
             jobs.spawn(processing_job(
                 return_sender.clone(),
@@ -80,14 +91,17 @@ async fn process_file(
         }
     }
     for (_, block) in blocks_read {
+        let following_block = initial_data
+            .remove(&(block.block_index + 1))
+            .unwrap_or_default();
         log::info!(
-            "Starting processing for remaining buffer at index {index}",
-            index = block.index
+            "Starting processing for remaining block {block_index}",
+            block_index = block.block_index
         );
         jobs.spawn(processing_job(
             return_sender.clone(),
             block,
-            SmallVec::default(),
+            following_block,
         ));
     }
     jobs.join_all().await;
@@ -95,23 +109,19 @@ async fn process_file(
     log::info!("Awaiting completed buffers");
     let mut buffers = completion_receiver.await.unwrap();
     log::info!("Received completed buffers");
-    let buffers_processed = buffers.iter_mut().map(|buffer| buffer.id).collect::<AHashSet<_>>();
-    for id in 0..JOB_COUNT {
-        if !buffers_processed.contains(&id) {
-            log::error!("Buffer {id} not processed!");
-        }
-    }
-    let blocks_processed = buffers.iter_mut().flat_map(|buffer| buffer.blocks_processed.drain()).collect::<AHashSet<_>>();
+    let blocks_processed = buffers
+        .iter_mut()
+        .flat_map(|buffer| buffer.blocks_processed.drain())
+        .collect::<AHashSet<_>>();
     let block_count = blocks_processed.iter().copied().max().unwrap_or(0);
     for index in 0..=block_count {
         if !blocks_processed.contains(&index) {
             log::error!("Block {index} not processed!");
         }
     }
-    let results = buffers
-        .into_par_iter()
-        .map(|buffer| buffer.cities)
-        .reduce(|| Default::default(), |mut acc_cities, new_cities| {
+    let results = buffers.into_par_iter().map(|buffer| buffer.cities).reduce(
+        || Default::default(),
+        |mut acc_cities, new_cities| {
             for (city, (min, max, sum, count)) in new_cities {
                 match acc_cities.entry(city) {
                     Entry::Occupied(entry) => {
@@ -127,7 +137,8 @@ async fn process_file(
                 };
             }
             acc_cities
-        });
+        },
+    );
     let mut results = results
         .into_iter()
         .map(|(city, (min, max, sum, count))| (city, min, sum / count as f64, max))
@@ -142,47 +153,62 @@ async fn read_file(
     mut return_queue: Receiver<Buffer>,
     completion_queue: tokio::sync::oneshot::Sender<Vec<Buffer>>,
 ) {
-    let file = File::open(path).await.expect("Failed to open file");
-    let file_size = path.metadata().expect("Could not read file metadata").size();
+    let file = Arc::new(File::open(path).await.expect("Failed to open file"));
+    let file_size = path
+        .metadata()
+        .expect("Could not read file metadata")
+        .size();
     let mut available_buffers = Vec::with_capacity(JOB_COUNT);
-    for id in 0..JOB_COUNT {
-        available_buffers.push(Buffer::new(id));
+    for _ in 0..JOB_COUNT {
+        available_buffers.push(Buffer::new());
     }
     let total_blocks = (file_size as usize + BUFFER_SIZE - 1) / BUFFER_SIZE;
-    log::info!("Reading {total_blocks} for a file of size {file_size}");
-    for index in 0..total_blocks {
+    log::info!("Reading {total_blocks} blocks for a file of size {file_size}");
+    let mut read_jobs = JoinSet::new();
+    for block_index in 0..total_blocks {
         let mut buffer = get_next_buffer(&mut available_buffers, &mut return_queue).await;
-        let data = std::mem::take(&mut buffer.data);
-        let (result, data) = file
-            .read_at(data, (index * BUFFER_SIZE) as u64)
-            .await;
-        match result {
-            Ok(count) => {
-                if count == 0 {
-                    log::error!("Unexpected premature end of file");
-                    break;
-                } else {
-                    buffer.data = data;
-                    buffer.count = count;
-                    buffer.index = index;
-                    send_queue
-                        .send(buffer)
-                        .await
-                        .expect("Failed to send buffer");
+        let file = file.clone();
+        let send_queue = send_queue.clone();
+        read_jobs.spawn_local(async move {
+            let data = std::mem::take(&mut buffer.data);
+            let (result, data) = file.read_at(data, (block_index * BUFFER_SIZE) as u64).await;
+            match result {
+                Ok(count) => {
+                    if count == 0 {
+                        log::error!("Unexpected premature end of file");
+                        return;
+                    } else {
+                        log::info!("Sending block {block_index} with {count} bytes");
+                        buffer = Buffer {
+                            data,
+                            count,
+                            block_index,
+                            ..buffer
+                        };
+                        send_queue
+                            .send(buffer)
+                            .await
+                            .expect("Failed to send buffer");
+                    }
+                }
+                Err(error) => {
+                    log::error!("Error reading file: {error}");
+                    return;
                 }
             }
-            Err(error) => {
-                log::error!("Error reading file: {error}");
-                break;
-            }
-        }
+        });
     }
     log::info!("End of file reached");
     drop(send_queue);
+    read_jobs.join_all().await;
+    log::info!("All read jobs completed");
     send_completed_buffers(&mut return_queue, completion_queue).await;
 }
 
-async fn get_next_buffer(available_buffers: &mut Vec<Buffer>, return_queue: &mut Receiver<Buffer>) -> Buffer {
+async fn get_next_buffer(
+    available_buffers: &mut Vec<Buffer>,
+    return_queue: &mut Receiver<Buffer>,
+) -> Buffer {
     if let Some(buffer) = available_buffers.pop() {
         buffer
     } else if let Some(buffer) = return_queue.recv().await {
@@ -197,18 +223,21 @@ async fn processing_job(
     mut read_buffer: Buffer,
     following_buffer: SmallVec<[u8; 64]>,
 ) {
-    log::info!("Started processing job");
+    log::info!(
+        "Started processing job for block {block_index}",
+        block_index = read_buffer.block_index
+    );
     process_buffer(
         &mut read_buffer.cities,
         &read_buffer.data[0..read_buffer.count],
         &following_buffer,
-        read_buffer.index == 0,
+        read_buffer.block_index == 0,
     );
     log::info!(
-        "Completed processing. Returning buffer {index}",
-        index = read_buffer.index
+        "Completed processing. Returning buffer for block {block_index}",
+        block_index = read_buffer.block_index
     );
-    read_buffer.blocks_processed.insert(read_buffer.index);
+    read_buffer.blocks_processed.insert(read_buffer.block_index);
     let _ = return_sender.send(read_buffer).await;
 }
 
@@ -219,7 +248,7 @@ async fn send_completed_buffers(
     log::info!("Assembling completed buffers");
     let mut completed_buffers = Vec::with_capacity(JOB_COUNT);
     while let Some(buffer) = return_queue.recv().await {
-        log::info!("Received buffer {index}", index = buffer.index);
+        log::info!("Received buffer {index}", index = buffer.block_index);
         completed_buffers.push(buffer);
     }
     log::info!("Sending completed buffers");
@@ -230,20 +259,18 @@ async fn send_completed_buffers(
 
 #[derive(Debug)]
 struct Buffer {
-    id: usize,
     data: Vec<u8>,
-    index: usize,
+    block_index: usize,
     count: usize,
     cities: AHashMap<String, (f64, f64, f64, u32)>,
     blocks_processed: AHashSet<usize>,
 }
 
 impl Buffer {
-    fn new(id: usize) -> Self {
+    fn new() -> Self {
         Self {
-            id,
             data: vec![0u8; BUFFER_SIZE],
-            index: 0,
+            block_index: 0,
             count: 0,
             cities: Default::default(),
             blocks_processed: Default::default(),
@@ -378,6 +405,7 @@ mod tests {
 
     #[tokio::test]
     async fn outputs_mean_max_min_of_singleton_with_two_measurements() -> Result<()> {
+        env_logger::init();
         let tempfile = write_content("Arbitrary city;10.0\nArbitrary city;20.0");
 
         let result = process_file(name_of(&tempfile)).await.unwrap();
