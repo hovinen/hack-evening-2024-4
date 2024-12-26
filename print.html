@@ -1,0 +1,331 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Rust Munich Meetup 2024/4 - Hacking Evening</title>
+        <meta name="robots" content="noindex">
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc.js"></script>
+    </head>
+    <body>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Rust Munich Meetup 2024/4 - Hacking Evening</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="agenda-and-timeline"><a class="header" href="#agenda-and-timeline">Agenda and Timeline</a></h1>
+<ul>
+<li>19:00 - 19:30: Welcome, Grab a drink, Grab a Pizza, Set up your workspace</li>
+<li>19:30 - 19:45: Introduction to the Hack Evening and the Challenge</li>
+<li>19:45 - 21:45: Write Code, Ask Questions, Get Help, Repeat - Have Fun!</li>
+<li>21:45 - 22:00: Wrap-up</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="introduction"><a class="header" href="#introduction">Introduction</a></h1>
+<p><a href="https://github.com/rust-meetup-munich/hack-evening-2024-4?tab=readme-ov-file#billion-row-challenge-">See the README.md</a></p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="learning-opportunities"><a class="header" href="#learning-opportunities">Learning Opportunities</a></h1>
+<p>Some things are more like side quests, others are important to get a reasonale speed.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="learning-opportunities-1"><a class="header" href="#learning-opportunities-1">Learning Opportunities</a></h1>
+<h2 id="cli"><a class="header" href="#cli">CLI</a></h2>
+<p>There are a few rust libraries available to create a CLI for your solution. This is a great opportunity to learn how to use them. Here we want to suggest two libraries, <code>clap</code> and <code>argh</code>.</p>
+<h3 id="clap"><a class="header" href="#clap">Clap</a></h3>
+<p>You could use <a href="https://docs.rs/clap/latest/clap/">clap</a> - A full-featured, fast Command Line Argument Parser for Rust, to create a CLI for your solution.</p>
+<p>:Note: clap has a sort of a declarative syntax, which works with rust proc macros. It's very well documented in form of examples, and reduces the boilerplate code you have to write for parsing command line arguments. This is very useful to explore if you are new to clap. Besides you can still use the procedural API if you prefer.</p>
+<h3 id="alternative-argh"><a class="header" href="#alternative-argh">Alternative Argh</a></h3>
+<p>There is different library called <a href="https://crates.io/crates/argh">Argh</a> that comes with a declarative syntax for defining command line arguments. It's a bit less feature-rich than clap, yet it's powerful and easy to use.</p>
+<h2 id="ideas-for-your-cli"><a class="header" href="#ideas-for-your-cli">Ideas for your CLI</a></h2>
+<p>Here are some optional ideas for CLI options you could implement:</p>
+<ul>
+<li>support a <code>--help</code> flag to print a help message</li>
+<li>support multiple input files at once (e.g. <code>file1.csv file2.csv file3.csv</code>)</li>
+<li>support different output formats, e.g. JSON, CSV, etc. (e.g. <code>--output-format json</code>)</li>
+<li>support different output destinations, e.g. file (e.g. <code>--output-file output.csv</code>)</li>
+<li>support different output verbosity levels (e.g. <code>--verbose</code>, <code>--debug</code>, etc.)</li>
+<li>support different error handling strategies (e.g. <code>--ignore-errors</code>, <code>--fail-fast</code>, etc.)</li>
+<li>show a nice progress bar while processing the input files</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="learning-opportunities-2"><a class="header" href="#learning-opportunities-2">Learning Opportunities</a></h1>
+<h2 id="threading"><a class="header" href="#threading">Threading</a></h2>
+<p>Rust has a powerful threading model that allows you to write concurrent code safely. This is a great opportunity to learn how to use it. Here we want to suggest the crate <code>rayon</code> that will likely lead you down a path where you will learn about <code>std::sync::Arc</code>, <code>std::sync::RwLock</code> and <code>std::sync::mpsc::channel</code> and a likes.</p>
+<p>rayon is a data parallelism library for Rust. It is a simple and efficient library that allows you to write parallel code that is easy to read and understand. It is a great way to get started with parallel programming in Rust.</p>
+<p>Please note that parallelism of IO is a tricky, so you might seek help of channels to communicate between threads.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="learning-opportunities-3"><a class="header" href="#learning-opportunities-3">Learning Opportunities</a></h1>
+<h2 id="some-ideas"><a class="header" href="#some-ideas">Some Ideas</a></h2>
+<ul>
+<li>buffered IO</li>
+<li>io_uring for async IO</li>
+<li>no string usage and use byte slices instead</li>
+<li>SIMD float parsing</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="submission"><a class="header" href="#submission">Submission</a></h1>
+<p>To submit your solution, please create a fork of this repository and submit a pull request to the <code>main</code> branch. Your pull request should include the following:</p>
+<ul>
+<li>A new directory in the <code>solutions</code> directory named after your GitHub username.</li>
+<li>This should contain a binary rust project with your solution.</li>
+<li>The binary should accept a single argument, that is the file path to the input file.</li>
+</ul>
+<p>For example, if your GitHub username is <code>sassman</code>, your solution should be in <code>solutions/sassman</code>.
+It should be callable like this:</p>
+<pre><code class="language-sh">cd solutions/sassman
+cargo run --release -- ../../samples/weather_100.csv
+</code></pre>
+<p>The output should be written to stdout.</p>
+<p>Please note that CI will run on your pull request to ensure that your solution compiles and runs correctly.</p>
+<p>:NOTE: If you have any questions, feel free to ask in the <a href="https://discord.com/channels/704612189532586014/1315802468868817007"><code>#hack-evening-2024-4</code> channel on the Rust Munich Discord server</a>.</p>
+<p>Good luck! 🦀</p>
+<h2 id="ci-is-your-friend"><a class="header" href="#ci-is-your-friend">CI is your friend</a></h2>
+<ul>
+<li>Your PR is automatically checked by GitHub Actions</li>
+<li>Benchmarks are exectued and results are provided as Comment on the PR, you can use this as a tool</li>
+<li>Flamegraphs are also produced during the build, they should appear on the PR as comment as well</li>
+</ul>
+<h2 id="submission-evaluation"><a class="header" href="#submission-evaluation">Submission Evaluation</a></h2>
+<p>We are evaluating submissions by benchmarking them on a set of three self-hosted Github runners with
+dedicated vCPU cores. The servers are AMD EPYC instances (CCX33) from
+<a href="https://www.hetzner.com/cloud/">Hetzner</a> with the following specs:</p>
+<div class="table-wrapper"><table><thead><tr><th>resource</th><th>value</th></tr></thead><tbody>
+<tr><td>dedicated vCPU cores</td><td>8</td></tr>
+<tr><td>RAM in GB</td><td>32</td></tr>
+<tr><td>disk space in GB</td><td>240</td></tr>
+</tbody></table>
+</div>
+<p>You submission will be terminated after 8 minutes (including build time).</p>
+<pre><code class="language-text">$ cat /proc/cpuinfo # with just the last core shown
+processor       : 7
+vendor_id       : AuthenticAMD
+cpu family      : 25
+model           : 1
+model name      : AMD EPYC Processor
+stepping        : 1
+microcode       : 0x1000065
+cpu MHz         : 2396.400
+cache size      : 512 KB
+physical id     : 0
+siblings        : 8
+core id         : 3
+cpu cores       : 4
+apicid          : 7
+initial apicid  : 7
+fpu             : yes
+fpu_exception   : yes
+cpuid level     : 13
+wp              : yes
+flags           : fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm rep_good nopl cpuid extd_apicid tsc_known_freq pni pclmulqdq ssse3 fma cx16 pcid sse4_1 sse4_2 x2apic movbe popcnt aes xsave avx f16c rdrand hypervisor lahf_lm cmp_legacy cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw topoext perfctr_core invpcid_single ssbd ibrs ibpb stibp vmmcall fsgsbase bmi1 avx2 smep bmi2 erms invpcid rdseed adx smap clflushopt clwb sha_ni xsaveopt xsavec xgetbv1 xsaves clzero xsaveerptr wbnoinvd arat umip pku ospke rdpid fsrm
+bugs            : sysret_ss_attrs null_seg spectre_v1 spectre_v2 spec_store_bypass srso
+bogomips        : 4792.80
+TLB size        : 1024 4K pages
+clflush size    : 64
+cache_alignment : 64
+address sizes   : 40 bits physical, 48 bits virtual
+power management:
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="conclusion"><a class="header" href="#conclusion">Conclusion</a></h1>
+<ul>
+<li>We will share the leaderboard results on Discord in the next day</li>
+<li>Please use discord to share your solution with others
+<ul>
+<li>There is the <a href="https://discord.com/channels/704612189532586014/1315802468868817007">Channel #hack-evening-2024-4</a></li>
+</ul>
+</li>
+<li>Next event date and time announcement</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="we-need-your-feedback"><a class="header" href="#we-need-your-feedback">We need your Feedback!</a></h1>
+<p>Help us to improve the Rust Munich Meetup by providing your feedback. Scan the QR code or click the link below to fill out the feedback form.</p>
+<p><img src="./qrcode_feedback.png" alt="qrcode" /></p>
+<p><a href="https://t1p.de/vs7x4">Feedback Form</a></p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="leaderboard"><a class="header" href="#leaderboard">Leaderboard</a></h1>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: center">Rank</th><th style="text-align: left">User</th><th style="text-align: left">Mean [s]</th><th style="text-align: left">Stddev [s]</th></tr></thead><tbody>
+<tr><td style="text-align: center">1</td><td style="text-align: left"><a href="https://github.com/hovinen"><img src="https://github.com/hovinen.png?size=128" alt="hovinen" /> hovinen</a></td><td style="text-align: left">60.687397549820005</td><td style="text-align: left">± 0.2872044826675961</td></tr>
+<tr><td style="text-align: center">2</td><td style="text-align: left"><a href="https://github.com/girstenbrei"><img src="https://github.com/girstenbrei.png?size=128" alt="girstenbrei" /> girstenbrei</a></td><td style="text-align: left">118.67308134039999</td><td style="text-align: left">± 2.8637700908595756</td></tr>
+<tr><td style="text-align: center">3</td><td style="text-align: left"><a href="https://github.com/iOperator"><img src="https://github.com/iOperator.png?size=128" alt="iOperator" /> iOperator</a></td><td style="text-align: left">169.38963314021996</td><td style="text-align: left">± 0.5828509560199935</td></tr>
+<tr><td style="text-align: center">4</td><td style="text-align: left"><a href="https://github.com/marcoow"><img src="https://github.com/marcoow.png?size=128" alt="marcoow" /> marcoow</a></td><td style="text-align: left">175.49558819898</td><td style="text-align: left">± 1.0326829202256727</td></tr>
+<tr><td style="text-align: center">5</td><td style="text-align: left"><a href="https://github.com/alexsotocx"><img src="https://github.com/alexsotocx.png?size=128" alt="alexsotocx" /> alexsotocx</a></td><td style="text-align: left">179.78462991153998</td><td style="text-align: left">± 1.1681295019958327</td></tr>
+<tr><td style="text-align: center">6</td><td style="text-align: left"><a href="https://github.com/barsuhn"><img src="https://github.com/barsuhn.png?size=128" alt="barsuhn" /> barsuhn</a></td><td style="text-align: left">190.29944273508002</td><td style="text-align: left">± 5.240300546077779</td></tr>
+<tr><td style="text-align: center">7</td><td style="text-align: left"><a href="https://github.com/Akaame"><img src="https://github.com/Akaame.png?size=128" alt="Akaame" /> Akaame</a></td><td style="text-align: left">232.71483228380004</td><td style="text-align: left">± 1.8100177534131772</td></tr>
+</tbody></table>
+</div>
+<p><sub>updated at: 2024-12-13 10:35:27+00:00 </sub></p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+        <script>
+        window.addEventListener('load', function() {
+            window.setTimeout(window.print, 100);
+        });
+        </script>
+
+    </div>
+    </body>
+</html>
