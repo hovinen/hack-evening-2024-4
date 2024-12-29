@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{hash_map::Entry, HashMap},
     fs::File,
     io::{BufRead, BufReader, Write},
     path::Path,
@@ -29,13 +29,17 @@ fn process_file(path: &Path) -> Vec<(String, f64, f64, f64)> {
             .expect("Measurement should be present")
             .parse::<f64>()
             .expect("Valid measurement");
-        if let Some((min, max, sum, count)) = cities.get_mut(city) {
-            *min = f64::min(*min, measurement);
-            *max = f64::max(*max, measurement);
-            *sum += measurement;
-            *count += 1;
-        } else {
-            cities.insert(city.to_string(), (measurement, measurement, measurement, 1));
+        match cities.entry(city.to_string()) {
+            Entry::Occupied(mut occupied_entry) => {
+                let (min, max, sum, count) = occupied_entry.get_mut();
+                *min = f64::min(*min, measurement);
+                *max = f64::max(*max, measurement);
+                *sum += measurement;
+                *count += 1;
+            }
+            Entry::Vacant(vacant_entry) => {
+                vacant_entry.insert((measurement, measurement, measurement, 1));
+            }
         }
     }
     let mut results = cities
