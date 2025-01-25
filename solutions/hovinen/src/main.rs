@@ -350,16 +350,22 @@ fn parse_measurement(measurement: &str) -> f64 {
     const DIGITS_10: [i32; 10] = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90];
     const DIGITS_100: [i32; 10] = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900];
     let measurement_bytes = measurement.as_bytes();
-    let mut total =
-        DIGITS_1[measurement_bytes[measurement_bytes.len() - 1] as usize - '0' as usize];
-    total += DIGITS_10[measurement_bytes[measurement_bytes.len() - 3] as usize - '0' as usize];
-    if measurement_bytes.len() > 3 && measurement_bytes[measurement_bytes.len() - 4] != '-' as u8 {
-        total += DIGITS_100[measurement_bytes[measurement_bytes.len() - 4] as usize - '0' as usize];
+    unsafe {
+        let tenths_char = *measurement_bytes.get_unchecked(measurement_bytes.len() - 1);
+        let mut total = *DIGITS_1.get_unchecked(tenths_char as usize - '0' as usize);
+        let ones_char = *measurement_bytes.get_unchecked(measurement_bytes.len() - 3);
+        total += *DIGITS_10.get_unchecked(ones_char as usize - '0' as usize);
+        if measurement_bytes.len() > 3
+            && measurement_bytes[measurement_bytes.len() - 4] != '-' as u8
+        {
+            let tens_char = *measurement_bytes.get_unchecked(measurement_bytes.len() - 4);
+            total += *DIGITS_100.get_unchecked(tens_char as usize - '0' as usize);
+        }
+        if measurement_bytes[0] == '-' as u8 {
+            total = -total;
+        }
+        total as f64 / 10.0
     }
-    if measurement_bytes[0] == '-' as u8 {
-        total = -total;
-    }
-    return total as f64 / 10.0;
 }
 
 fn output(mut writer: impl Write, lines: &[(String, f64, f64, f64)]) {
